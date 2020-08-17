@@ -1,0 +1,7 @@
+name: "first-website"
+output_dir: "."
+navbar:
+  title: "My Beautiful Website"
+  left:
+    - text: "Home"
+      href: docs/lab-02.html
