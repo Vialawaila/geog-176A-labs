@@ -1,0 +1,214 @@
+#Yan Wang
+#08/17/2020
+#Lab 02
+
+library(tidyverse)
+url = 'https://raw.githubusercontent.com/nytimes/covid-19-data/master/us-counties.csv'
+covid = read_csv(url)
+head(covid)
+
+#Question 1
+
+dat = covid %>%
+  filter(state == "California") %>%
+  group_by(county) %>%
+  mutate(newCases = cases - lag(cases)) %>%
+  ungroup() %>%
+  filter(date == max(date))
+
+most_cases = dat %>%
+  slice_max(cases, n = 5) %>%
+  select(county, cases)
+
+knitr::kable(most_cases,
+             caption = "Most Cases California Counties",
+             col.names = c("County", "Cases"))
+
+most_new_cases = dat %>%
+  slice_max(newCases, n = 5) %>%
+  select(county, newCases)
+
+knitr::kable(most_new_cases,
+             caption = "Most New Cases California Counties",
+             col.names = c("County", "New Cases"))
+
+library(readxl)
+pop <- read_excel("data/PopulationEstimates.xls", skip = 2)
+
+names(pop)
+dim(pop)
+nrow(pop)
+str(pop)
+
+pop %>%
+  select(fips = FIPStxt, state = State, county = Area_Name, pop2019 = POP_ESTIMATE_2019)
+
+pop_2019 = pop %>%
+  filter(State == "CA") %>%
+  slice_max(pop2019, n = 1)
+
+
+pop1 = right_join(pop, dat, by = "fips") %>%
+  mutate(cases_percapita = (cases / pop2019) * 100000,
+         newCases_percapita = (newCases / pop2019) * 100000)
+
+most_cases_percapita = pop1 %>%
+  slice_max(cases_percapita, n = 5) %>%
+  select(county, cases_percapita)
+
+knitr::kable(most_cases_percapita,
+             caption = "Most Cumulative Cases Per Capita",
+             col.names = c("County", "Cases"))
+
+most_new_cases_percapita = pop1 %>%
+  slice_max(newCases_percapita, n = 5) %>%
+  select(county, newCases_percapita)
+
+knitr::kable(most_new_cases_percapita,
+             caption = "Most New Cases Per Capita",
+             col.names = c("County", "New Cases"))
+
+(pop3 = Pop  %>%
+    filter(State == "CA") %>%
+    select(pop19 = POP_ESTIMATE_2019, state = State, county = Area_Name, fips = FIPStxt) %>%
+    group_by(county) %>%
+    slice_max(pop19, n=1))
+
+(dat2 = covid %>%
+    filter(state == "California") %>%
+    group_by(county) %>%
+    mutate(newCases = cases - lag(cases)) %>%
+    ungroup())
+pop_dat2 = right_join(pop3, dat2, by = "fips")
+
+(last14Days = pop_dat2 %>%
+    filter(date > max(date) - 14, date < max(date)) %>%
+    select(county = county.y, newCases, pop19, date) %>%
+    group_by(county, pop19) %>%
+    summarise(newCases = sum(newCases, na.rm = TRUE)) %>%
+    ungroup() %>%
+    mutate(newCases_percapita = (newCases/(pop19/100000))))
+
+(total_state_cases = dat %>%
+    filter(date == max(date)) %>%
+    group_by(county) %>%
+    summarise(cases = sum(cases, na.rm = TRUE)) %>%
+    ungroup() %>%
+    summarise(cases = sum(cases, na.rm = TRUE)) %>%
+    pull(cases))
+
+(total_state_newCases = dat %>%
+    filter(date == max(date)) %>%
+    group_by(county) %>%
+    summarise(newCases = sum(newCases, na.rm = TRUE)) %>%
+    ungroup() %>%
+    summarise(newCases = sum(newCases, na.rm = TRUE)) %>%
+    pull(newCases))
+
+(safe_counties = last14Days %>%
+    filter(newCases_percapita < 100) %>%
+    pull(county))
+
+#As of August 17, 2020, there are a total of 628508 cases, 6527 new cases within the state of California, and 13 counties in California are safe.
+
+#Question 2
+
+library(ggthemes)
+covid %>%
+  filter(state %in% c('New York', 'California', 'Louisiana', 'Florida')) %>%
+  group_by(state, date) %>%
+  summarize(cases = sum(cases)) %>%
+  ungroup(state, date) %>%
+  group_by(state) %>%
+  mutate(newCases = cases - lag(cases)) %>%
+  mutate(roll7 = rollmean(newCases, 7, fill = NA, align = "right")) %>%
+ggplot(aes(x = date)) +
+  geom_col(aes(y = newCases), col = NA, fill = "#F5B8B5") +
+  geom_line(aes(y = roll7), col = "darkred", size = 1) +
+  labs(title = "New Cases: States",
+       x = 'Date',
+       y = "Daily New Cases Count",
+       caption = "Geog 176A-Lab 02",
+       subtitle = "COVID-19 Data: NY-Times",
+       color = "") +
+  facet_wrap(~state, scales = "free_y") +
+  theme(plot.background = element_rect(fill = "white"),
+        panel.background = element_rect(fill = "white"),
+        plot.title = element_text(size = 15, face = 'bold')) +
+  theme(aspect.ratio = .5)
+
+ggsave(path = "img", filename = "Question_2(2).png")
+
+dat2 = covid%>%
+  filter(state %in% c("New York", "California", "Louisiana", "Florida")) %>%
+  right_join(pop, by = "fips")
+state_pop = pop %>%
+  filter(State %in% c("NY", "CA","LA", "FL")) %>%
+  group_by(State) %>%
+  slice_max(pop2019, n = 1) %>%
+  right_join(dat2, by = "State") %>%
+  select(pop = pop2019.x, date, state, cases, deaths) %>%
+  ungroup() %>%
+  filter(state %in% c("New York", "California", "Louisiana", "Florida")) %>%
+  group_by(pop, state,date) %>%
+  summarise(cases = max(cases)) %>%
+  mutate(newCases1 = cases - lag(cases), newCases_Percapita = newCases1 / pop, roll_7 = rollmean(newCases_Percapita, 7, fill = NA, align = "right")) %>%
+  ungroup()
+ggplot(state_pop, aes(x = date)) +
+  geom_col(aes(y = newCases_Percapita), col = NA, fill = "red") +
+  geom_line(aes(y = roll_7), col = "black", size = 1) +
+  labs(title = "New Cases Per Capita: States",
+       x = "Date",
+       y = "Newcases",
+       caption = "Geog 176A-Lab 02",
+       subtitle = "COVID-19 Data: NY-Times",
+       color = "") +
+  facet_wrap(~state, scales = "free_y")
+  theme(plot.background = element_rect(fill = "white"),
+      panel.background = element_rect(fill = "white"),
+      plot.title = element_text(size = 15, face = 'bold')) +
+  theme(aspect.ratio = .5)
+
+ggsave(path = "img", filename = "Question_2(4).png")
+
+
+#Scaling by population, it data presents the directivity of the data. It becomes better for comparing the data because for some areas with absolute small population and small amount of confirmed cases (i.e. Louisiana), the ration of cases over population introduces a objective comparison between different places.It is now comparing the relative amout among different areas.
+
+
+#Question3
+
+library(readr)
+county_centroids <- read_csv("~/github/geog-176A-labs/data/county-centroids-1.csv")
+View(county_centroids)
+
+county1 <- covid %>%
+  mutate(statefp = substr(fips, 1, 2))
+county2 = county_centroids %>%
+  select(county = name, LON, LAT, statefp)
+covid_xy = inner_join(county1, county2, by = c("county", "statefp"))
+xy1 <- covid_xy %>%
+  mutate(xcoord = cases * LON, ycoord = cases * LAT) %>%
+  group_by(date) %>%
+  summarize(cases = sum(cases), xcoord = sum(xcoord), ycoord = sum(ycoord)) %>%
+  mutate(longitude = xcoord / cases, latitude = ycoord / cases) %>%
+  mutate(month = format(date, "%m"))
+xy2 <- xy1 %>%
+  group_by(month) %>%
+  summarise(mocases = sum(cases))
+xy3 <- inner_join(xy1, xy2, by = "month") %>%
+  select(date, longitude, latitude)
+knitr::kable(xy4, caption = "COVID-19 Weighted Mean", col.names = c("Date","Longitude","Latitude"))
+
+xy4 <- xy2 %>%
+  select(month, moncases)
+knitr::kable(xy4, caption = "Monthly New Cases", col.names = c("Month","New Cases"))
+ggplot(data = one, aes(x = longitude, y = latitude)) +
+  borders("state", fill = "gray90", colour = "white") +
+  geom_point(aes(color = month, size = cases)) +
+  labs(title = "COVID-19 Weighted Mean",
+       x = "Longitude",
+       y = "Latitude",
+       caption = "Geog 176A-Lab 02",
+       subtitle = "COVID-19 Data: NY-Times",
+       color = "")
+
