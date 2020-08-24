@@ -1,0 +1,251 @@
+---
+title: "Geography 176A"
+author: "[Yan Wang](https://vialawaila.github.io)"
+subtitle: "Lab 03: Distances and the Border Zone"
+output:
+  html_document:
+    theme: journal
+---
+	
+```{r message=FALSE, warning=FALSE}
+
+# SPDS
+library(tidyverse)
+library(sf)
+library(units)
+
+# Data
+library(USAboundaries)
+library(rnaturalearth)
+
+# Visualization
+library(gghighlight)
+library(ggrepel)
+library(knitr)
+
+```
+	
+
+# Question 1
+	
+
+```{r message=FALSE, warning=FALSE}
+
+eqdc = '+proj=eqdc +lat_0=40 +lon_0=-96 +lat_1=20 +lat_2=60 +x_0=0 +y_0=0 +datum=NAD83 +units=m +no_defs'
+
+```
+	
+	
+```{r message=FALSE, warning=FALSE}
+
+conus = USAboundaries::us_states() %>% 
+  filter(!state_name %in% c("Puerto Rico", "Alaska", "Hawaii")) %>% 
+  st_transform(eqdc)
+
+```
+	
+
+```{r message=FALSE, warning=FALSE}
+
+world_boundaries <- rnaturalearth::countries110
+world_boundaries <- world_boundaries %>% 
+  st_as_sf() %>% 
+  filter(admin %in% c("United States of America", "Mexico", "Canada")) %>% 
+  st_transform(eqdc)
+
+```
+	
+
+```{r message=FALSE, warning=FALSE}
+
+city_location = readr::read_csv("../data/uscities.csv") %>%
+  st_as_sf(coords = c("lng", "lat"), crs = 4326) %>% 
+  st_transform(eqdc) %>% 
+  filter(!state_name %in% c("Alaska", "Hawaii", "Puerto Rico"))
+
+```
+
+# Question 2
+	
+```{r message=FALSE, warning=FALSE}
+
+conus_Q2 <- conus %>% 
+  st_union() %>% 
+  st_cast("MULTILINESTRING")
+
+city_location_Q2<- city_location %>%
+  mutate(distance_to_USABorder = st_distance(city_location, conus_Q2), distance_to_USABorder = units::set_units(distance_to_USABorder, "km"), distance_to_USABorder = units::drop_units(distance_to_USABorder))
+	
+distance_Q2 <- city_location_Q2 %>% 
+  select(city, state_name, distance_to_USABorder) %>% 
+  arrange(-distance_to_USABorder) %>% 
+  slice_head(n = 5) %>% 
+  st_drop_geometry() 
+knitr::kable(distance_Q2, caption = "Five Cities Farthest from the US Border", col.names = c("City", "State", "Distance (km)"))
+
+```
+	
+```{r message=FALSE, warning=FALSE}
+
+conus_Q2_2 <- conus %>% 
+  st_combine() %>% 
+  st_cast("MULTILINESTRING")
+
+city_location_Q2_2 <- city_location %>%
+  mutate(distance_to_state = st_distance(city_location, conus_Q2_2), distance_to_state = units::set_units(distance_to_state, "km"), distance_to_state = units::drop_units(distance_to_state))
+	
+distance_Q2_2 <- city_location_Q2_2 %>% 
+  select(city, state_name, distance_to_state) %>% 
+  arrange(-distance_to_state) %>% 
+  slice_head(n = 5) %>% 
+  st_drop_geometry() 
+knitr::kable(distance_Q2_2, caption = "Five Cities Farthest from a State Border", col.names = c("City", "State", "Distance (km)"))
+
+```
+	
+
+```{r message=FALSE, warning=FALSE}
+
+mexico <-world_boundaries %>% 
+  filter(admin == "Mexico") %>% 
+  st_cast("MULTILINESTRING")
+
+city_location_Q2_3 <- city_location %>%
+  mutate(distance_to_Mexico = st_distance(city_location, mexico), distance_to_Mexico = units::set_units(distance_to_Mexico, "km"), distance_to_Mexico = units::drop_units(distance_to_Mexico))
+	
+mexico_Q2 <- city_location_Q2_3 %>% 
+  select(city, state_name, distance_to_Mexico) %>% 
+  arrange(-distance_to_Mexico) %>% 
+  slice_head(n = 5) %>% 
+  st_drop_geometry() 
+knitr::kable(mexico_Q2, caption = "Five Cities Farthest from the Mexican Border", col.names = c("City", "State", "Distance (km)"))
+
+```
+	
+
+```{r message=FALSE, warning=FALSE}
+
+canada <-world_boundaries %>% 
+  filter(admin == "Canada") %>% 
+  st_cast("MULTILINESTRING")
+
+city_location_Q2_4 <- city_location %>%
+  mutate(distance_to_Canada = st_distance(city_location, canada), distance_to_Canada = units::set_units(distance_to_Canada, "km"), distance_to_Canada = units::drop_units(distance_to_Canada))
+	
+canada_Q2 <- city_location_Q2_4 %>% 
+  select(city, state_name, distance_to_Canada) %>% 
+  arrange(-distance_to_Canada) %>% 
+  slice_head(n = 5) %>% 
+  st_drop_geometry() 
+knitr::kable(canada_Q2, caption = "Five Cities Farthest from the Canadian Border", col.names = c("City", "State", "Distance (km)"))
+
+```
+
+# Question 3
+
+```{r message=FALSE, warning=FALSE}
+
+city_location_Q3 <- city_location %>% 
+  slice_max(population, n = 10)
+ggplot() +
+  geom_sf(data = world_boundaries, color = "black") +
+  geom_sf(data = conus, color = "#F5B8B5") +
+  geom_sf(data = city_location_Q3, color = "red") +
+  ggrepel::geom_label_repel(data = city_location_Q3, aes(label = city, geometry = geometry), stat = "sf_coordinates")+
+  labs(title = "10 Largest USA Cities (by Population)",
+       x = "Longitude",
+       y = "Latitude")
+
+```
+
+```{r message=FALSE, warning=FALSE}
+
+distance_Q3 <- city_location_Q2 %>% 
+  slice_max(distance_to_USABorder, n = 5) 
+ggplot() +
+  geom_sf(data = conus) +
+  geom_sf(data = city_location_Q2, aes(col = distance_to_USABorder)) +
+  geom_sf(data = distance_Q3)+
+  scale_color_gradient(low = 'red', high = 'black') +
+  ggthemes::theme_map() +
+  ggrepel::geom_label_repel(data = distance_Q3, aes(label = city, geometry = geometry), stat = "sf_coordinates")+
+  labs(title = "City Distance from the Border", color = "Distance (km)")
+
+```
+
+
+```{r message=FALSE, warning=FALSE}
+
+distance_Q3_3 <- city_location_Q2_2 %>% 
+  slice_max(distance_to_state, n = 5)
+  
+ggplot() +
+  geom_sf(data = conus) +
+  geom_sf(data = city_location_Q2_2, aes(col = distance_to_state)) +
+  geom_sf(data = distance_Q3_3)+
+  scale_color_gradient(low = 'red', high = 'black') +
+  ggthemes::theme_map() +
+  ggrepel::geom_label_repel(data = distance_Q3_3, aes(label = city, geometry = geometry), stat = "sf_coordinates")+
+  labs(title = "City Distance from Nearest State", color = "Distance (km)")
+
+```
+
+```{r message=FALSE, warning=FALSE}
+
+equidistance <- city_location %>%
+  mutate(distance_to_Mexico = st_distance(city_location, mexico), distance_to_Mexico = units::set_units(distance_to_Mexico, "km"), distance_to_Mexico = units::drop_units(distance_to_Mexico)) %>% 
+  mutate(distance_to_Canada = st_distance(city_location, canada), distance_to_Canada = units::set_units(distance_to_Canada, "km"), distance_to_Canada = units::drop_units(distance_to_Canada)) %>% 
+  mutate(diff = abs(distance_to_Canada - distance_to_Mexico)) %>% 
+  mutate(check = 100)
+
+equidistance_Q3 <- equidistance %>% 
+  filter(diff < 100) %>% 
+  slice_max(population, n = 5)
+
+ggplot()+
+  geom_sf(data = conus) +
+  geom_sf(data = equidistance, aes(color = diff)) +
+  geom_sf(data = equidistance_Q3, color = "red") +
+  scale_color_gradient(low = "blue", high = "black") +
+  ggthemes::theme_map() +
+  ggrepel::geom_label_repel(data = equidistance_Q3, aes(label = city, geometry = geometry), stat = "sf_coordinates")+
+  labs(title = " Equidistance boundary from Mexico and Canada")
+
+```
+
+# Question 4
+
+```{r message=FALSE, warning=FALSE}
+
+border_Q4 <- city_location_Q2 %>%
+  mutate(totalpopulation = sum(population)) %>%
+  filter(distance_to_USABorder < 160) %>% 
+  summarize(cities = n(), ppl = sum(population), percentage = (ppl / totalpopulation) * 100) %>% 
+  slice(n = 1) %>% 
+  st_drop_geometry()
+knitr::kable(border_Q4, caption = "Quantifing Border Zone", col.names = c("Number of Cities", "Population within 100 Mile Zone", "Percentage of Total Population in 100 Mile Zone"), format.args = list(big.mark = ","))
+```
+**The data match the ACLU estimate in the link that roughly two-thirds of the United States' population lives within the 100-mile zone. That's about 200 million people **
+
+```{r message=FALSE, warning=FALSE}
+
+border <- city_location_Q2 %>% 
+  filter(distance_to_USABorder < 160)
+
+border_zone <- city_location_Q2%>% 
+  filter(distance_to_USABorder < 160) %>% 
+  group_by(state_name) %>% 
+  slice_max(population, n = 1)
+
+ggplot()+
+  geom_sf(data = conus, fill = NA) +
+  geom_sf(data = city_location_Q2, aes(color = distance_to_USABorder)) +
+  geom_sf(data = border_zone, color = "black") +
+  scale_color_gradient(low = "orange", high = "darkred") +
+  gghighlight(distance_to_USABorder < 160) +
+  ggthemes::theme_map() +
+  ggrepel::geom_label_repel(data = border_zone, aes(label = city, geometry = geometry), stat = "sf_coordinates") +
+  labs(title = "Most populous city in each state within the Danger Zone") 
+
+```
+
