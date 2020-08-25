@@ -36,7 +36,10 @@ most_cases = dat %>%
 knitr::kable(most_cases,
              caption = "Most Cases California Counties",
              col.names = c("County", "Cases"))
+```
 
+
+```{r}
 most_new_cases = dat %>%
   slice_max(newCases, n = 5) %>%
   select(county, newCases)
@@ -44,41 +47,23 @@ most_new_cases = dat %>%
 knitr::kable(most_new_cases,
              caption = "Most New Cases California Counties",
              col.names = c("County", "New Cases"))
+```
 
+
+```{r}
 library(readxl)
-library(dplyr)
-library(tidyverse)
-pop <- read_excel("../data/PopulationEstimates.xls", skip = 2) %>%
-  dplyr::select(POP_ESTIMATE_2019, State, Area_Name, FIPStxt) %>% 
-  rename(
-    "pop2019" = "POP_ESTIMATE_2019", 
-    "state" = "State", 
-    "county" = "Area_Name", 
-    "fips" = "FIPStxt")
-pop1 = right_join(pop, dat, by = "fips") 
-pop_percapita <- pop1 %>%
-  filter(date == max(date), state.x == 'CA') %>% 
-  mutate(cases_percapita = (cases / pop2019)) %>% 
-  arrange(-cases_percapita) %>% 
-  head(5)
+StatePopulationEstimates <- read_excel("~/github/geog-176A-labs/data/PopulationEstimates.xls", skip = 2) %>% 
+  select(pop19 = POP_ESTIMATE_2019, fips = FIPStxt)
+covid_population <- inner_join(covid, StatePopulationEstimates, by = 'fips')
 
-knitr::kable(cases_percapita,
-             caption = "Most Cumulative Cases Per Capita",
-             col.names = c("County", "Cases"))
-
-most_new_cases_percapita = pop1 %>%
-  filter(state.x == 'CA') %>% 
-  group_by(county) %>% 
-  mutate(new_daily_cases = cases - lag(cases)) %>% 
-  ungroup(county) %>% 
-  mutate(DailyCasesPerCapita = new_daily_cases / pop19) %>%
+most_cases_percapita <- covid_population %>% 
   filter(date == max(date)) %>% 
-  arrange(-DailyCasesPerCapita) %>% 
+  filter(state == 'California') %>% 
+  mutate(casesPerCapita = (cases / pop19)) %>% 
+  arrange(-casesPerCapita) %>% 
   head(5)
+knitr::kable(most_cases_percapita, caption = "Most Cumulative Cases Per Capita", col.names = c('Date', 'County', 'State', 'FIPS', 'Cases', 'Deaths', 'Population', 'Cases Per Capita'))
 
-knitr::kable(new_cases_percapita,
-             caption = "Most New Cases Per Capita",
-             col.names = c("County", "New Cases"))
 ```
 
 
@@ -188,7 +173,10 @@ ggplot(aes(x = date)) +
         panel.background = element_rect(fill = "white"),
         plot.title = element_text(size = 15, face = 'bold')) +
   theme(aspect.ratio = .5)
+```
 
+
+```{r}
 library(tidyverse)
 dat2 = covid%>%
   filter(state %in% c('New York', 'California', 'Louisiana', 'Florida')) %>%
@@ -196,12 +184,21 @@ dat2 = covid%>%
   summarize(cases = sum(cases)) %>%
   ungroup(state, date) %>%
   group_by(state) %>%
-  mutate(newCases1 = cases - lag(cases), newCases_Percapita = newCases1 / pop, roll_7 = rollmean(newCases_Percapita, 7, fill = NA, align = "right")) %>%
-  ungroup()
-  
-ggplot(state_pop, aes(x = date)) +
-  geom_col(aes(y = newCases_Percapita), col = NA, fill = "red") +
-  geom_line(aes(y = roll_7), col = "black", size = 1) +
+  mutate(NewDailyCases = cases - lag(cases)) %>%
+  mutate(SevenDayAvg = rollmean(NewDailyCases, 7, fill = NA, align = "right"))
+StatePopulationEstimates1 <- read_excel("~/github/geog-176A-labs/data/PopulationEstimates.xls", skip = 2) %>% 
+  select(pop19 = POP_ESTIMATE_2019, state_abbr = State, state = Area_Name) %>% 
+  group_by(state_abbr) %>% 
+  slice_max(pop19, n = 1)
+newjoineddata = inner_join(dat2, StatePopulationEstimates1, by = 'state')
+percapdata <- newjoineddata %>% 
+  group_by(state) %>% 
+  mutate(NewCasesPerCap = NewDailyCases / pop19) %>% 
+  mutate(NewSevenDayAvg = rollmean(NewCasesPerCap, 7, fill = NA, align = "right")) 
+percapdata %>% 
+  ggplot(aes(x = date)) +
+  geom_col(aes(y = NewCasesPerCap), col = "#F5B8B5") +
+  geom_line(aes(y = NewSevenDayAvg), col = "darkred", size = 1) +
   labs(title = "New Cases Per Capita: States",
        x = "Date",
        y = "Newcases",
@@ -227,17 +224,16 @@ ggplot(state_pop, aes(x = date)) +
 ```{r}
 library(readr)
 county_centroids <- read_csv("../data/county-centroids.csv")
+head(county_centroids)
 ```
 
 ```{r}
 library(tidyverse)
 library(ggplot2)
 library(ggthemes)
-county1 <- covid %>% 
-  mutate(fips = substr(fips, 1, 2))
 county2 = county_centroids %>% 
   select(county = name, LON, LAT, fips) 
-covid_xy = inner_join(county1, county2, by = c("county", "fips"))
+covid_xy = inner_join(covid, county2, by = c("county", "fips"))
 xy1 <- covid_xy %>% 
   mutate(xcoord = cases * LON, ycoord = cases * LAT) %>% 
   group_by(date) %>% 
@@ -250,11 +246,16 @@ xy2 <- xy1 %>%
 xy3 <- inner_join(xy1, xy2, by = "month") %>%
   select(date, longitude, latitude) 
 knitr::kable(xy3, caption = "COVID-19 Weighted Mean", col.names = c("Date","Longitude","Latitude"))
+
+```
+
+
+```{r}
 xy4 <- xy2 %>% 
   select(month, mocases)
 knitr::kable(xy4, caption = "Monthly New Cases", col.names = c("Month","New Cases"))
 ggplot(data = xy1, aes(x = longitude, y = latitude)) +
-  borders("state", fill = "gray90", colour = "white") +
+  borders("state", fill = "gray", colour = "white") +
   geom_point(aes(color = month, size = cases)) +
   labs(title = "COVID-19 Weighted Mean",
        x = "Longitude",
