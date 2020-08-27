@@ -1,0 +1,92 @@
+---
+title: "Geography 176A"
+author: "[Yan Wang](https://vialawaila.github.io)"
+subtitle: "Lab 04: Tesselations, Spatial Joins, and Point-in-Polygon"
+output:
+  html_document:
+    theme: journal
+---
+
+#Yan Wang
+#08/27/2020
+#Lab 04
+
+```{r}
+
+# SPDS
+library(tidyverse)
+library(sf)
+library(units)
+
+# Data
+library(USAboundaries)
+library(rnaturalearth)
+
+# Visualization
+library(gghighlight)
+library(ggrepel)
+library(knitr)
+library(rmapshaper)
+```
+#Question 1
+
+```{r}
+conus = USAboundaries::us_states() %>% 
+  filter(!state_name %in% c("Puerto Rico", "Alaska", "Hawaii")) %>% 
+  st_transform(5070)
+```
+```{r}
+county_centroid = st_centroid(conus) %>%
+  st_combine() %>%
+  st_cast("MULTIPOINT")
+```
+```{r}
+v_grid = st_voronoi(county_centroid) %>% 
+  st_cast() %>% 
+  st_as_sf() %>% 
+  mutate(id = 1:n())
+t_grid = st_triangulate(county_centroid) %>% 
+  st_cast() %>% 
+  st_as_sf() %>% 
+  mutate(id = 1:n())
+sq_grid = st_make_grid(conus, n = c(70, 50)) %>% 
+  st_as_sf() %>% 
+  mutate(id = 1:n())
+hex_grid = st_make_grid(conus, n = c(70, 50), square = FALSE) %>% 
+  st_as_sf() %>% 
+  mutate(id = 1:n())
+```
+```{r}
+simplified = ms_simplify(conus, keep = 0.05)
+original_points = mapview::npts(conus)
+simplified_points = mapview::npts(simplified)
+remove = original_points - simplified_points
+```
+
+I remove `remove` points from the original object. This simplification will leads to some loss on details of the border. 
+
+```{r}
+plot_tess = function(data, title){
+  ggplot() + 
+    geom_sf(data = data, fill = "white", col = "navy", size = .2) +   
+    theme_void() +
+    labs(title = title, caption = paste("This tesselation has:", nrow(data), "tiles" )) +
+    theme(plot.title = element_text(hjust = .5, color =  "navy", face = "bold"))
+}
+
+plot_tess(data = conus, "Original Data")
+
+v_grid = st_intersection(v_grid, st_union(conus))
+plot_tess(v_grid, "Voroni Coverage") + 
+  geom_sf(data = county_centroid, col = "darkred", size = .2)
+
+t_grid = st_intersection(t_grid, st_union(conus))
+plot_tess(t_grid, "Voroni Coverage") + 
+  geom_sf(data = county_centroid, col = "darkred", size = .3)
+
+plot_tess(sq_grid, "Square Coverage")
+
+
+plot_tess(hex_grid, "Hexegonal Coverage")
+
+```
