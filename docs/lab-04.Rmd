@@ -12,7 +12,6 @@ output:
 #Lab 04
 
 ```{r}
-
 # SPDS
 library(tidyverse)
 library(sf)
@@ -21,12 +20,14 @@ library(units)
 # Data
 library(USAboundaries)
 library(rnaturalearth)
+library(readxl)
 
 # Visualization
 library(gghighlight)
 library(ggrepel)
 library(knitr)
 library(rmapshaper)
+library(leaflet)
 ```
 #Question 1
 
@@ -56,22 +57,22 @@ hex_grid = st_make_grid(conus, n = c(70, 50), square = FALSE) %>%
   st_as_sf() %>% 
   mutate(id = 1:n())
 ```
+
 ```{r}
 simplified = ms_simplify(conus, keep = 0.05)
 original_points = mapview::npts(conus)
 simplified_points = mapview::npts(simplified)
-remove = original_points - simplified_points
 ```
 
-I remove `remove` points from the original object. This simplification will leads to some loss on details of the border. 
+I remove 10375 points from the original object. This simplification will leads to some loss on details of the border. 
 
-```{r}
+```{r message=FALSE, warning=FALSE}
 plot_tess = function(data, title){
   ggplot() + 
-    geom_sf(data = data, fill = "white", col = "navy", size = .2) +   
+    geom_sf(data = data, fill = "white", col = "green", size = .2) +   
     theme_void() +
     labs(title = title, caption = paste("This tesselation has:", nrow(data), "tiles" )) +
-    theme(plot.title = element_text(hjust = .5, color =  "navy", face = "bold"))
+    theme(plot.title = element_text(hjust = .5, color =  "green", face = "bold"))
 }
 
 plot_tess(data = conus, "Original Data")
@@ -81,12 +82,187 @@ plot_tess(v_grid, "Voroni Coverage") +
   geom_sf(data = county_centroid, col = "darkred", size = .2)
 
 t_grid = st_intersection(t_grid, st_union(conus))
-plot_tess(t_grid, "Voroni Coverage") + 
+plot_tess(t_grid, "Triangle Coverage") + 
   geom_sf(data = county_centroid, col = "darkred", size = .3)
 
 plot_tess(sq_grid, "Square Coverage")
 
-
 plot_tess(hex_grid, "Hexegonal Coverage")
 
 ```
+
+#Question 2
+
+```{r message=FALSE, warning=FALSE}
+
+sum_tess = function(data, title) {
+  area = st_area(data) %>% 
+    units::set_units("km2") %>%
+    units::drop_units() 
+  
+  data_frame(title, nrow(data), mean(area), sd(area), sum(area)) 
+}
+
+tess_summary = bind_rows(
+  sum_tess(conus, "Original"),
+  sum_tess(v_grid, "Voroni"),
+  sum_tess(t_grid, "Triangular"),
+  sum_tess(sq_grid, "Square"),
+  sum_tess(hex_grid, "Hexagonal"))
+
+knitr::kable(tess_summary, caption = "Summarizing Tessellated Surfaces", col.names = c("Tesselation","Features","Mean Area (km2)","Standard Deviation ","Total Area (km2)"), format.args = list(big.mark = ",", scientific = F))
+```
+* Original: Least feature, largest mean area and standard deviation, and second large total area.
+* Voroni: Least feature, largest mean area, and second large standard deviation and total area.
+* Triangulation: Second least number of feature and standard deviation, and sacond largest mean area and total area.
+* Square: Most number of features, second least mean area, least standard deviation equals 0, and largest total area.
+* Hexagonal: Most number of features, least mean area and standard deviation equals 0, and second largest total area.
+
+#Question 3
+
+```{r message=FALSE, warning=FALSE}
+NID2019_U <- read_excel("~/github/geog-176A-labs/data/NID2019_U.xlsx") %>% 
+  filter(!is.na(LONGITUDE)) %>% 
+  filter(!is.na(LATITUDE))
+sf_NID2019_U <- NID2019_U%>% 
+    st_as_sf(coords = c("LONGITUDE", "LATITUDE"), crs = 4326) %>%
+  st_transform(5070)
+```
+
+```{r message=FALSE, warning=FALSE}
+point_in_polygon3 = function(points, polygon, id){
+  st_join(polygon, points) %>%
+    st_drop_geometry() %>%
+    count(.data[[id]]) %>%
+    setNames(c(id, "n")) %>%
+    left_join(polygon, by = id) %>%
+    st_as_sf()
+}
+```
+
+
+```{r message=FALSE, warning=FALSE}
+plot_pip = function(data, title){
+  ggplot() +
+    geom_sf(data = data, aes(fill = log(n)), alpha = .9, size = .2) +
+    scale_fill_gradient(low = "white", high = "darkgreen") +
+    theme_void() +
+    theme(legend.position = 'none',
+          plot.title = element_text(face = "bold", color = "darkgreen", hjust = .5, size = 18)) +
+    labs(title = title,
+         caption = paste0(sum(data$n), "Dams represented"))
+}
+```
+
+```{r message=FALSE, warning=TRUE}
+point_in_polygon3(sf_NID2019_U, conus, "geoid") %>% 
+  plot_pip("Dams Per County")
+```
+
+```{r message=FALSE, warning=FALSE}
+point_in_polygon3(sf_NID2019_U, v_grid, "id") %>% 
+  plot_pip("Dams per Voronoi")
+```
+
+```{r message=FALSE, warning=FALSE}
+point_in_polygon3(sf_NID2019_U, t_grid, "id") %>% 
+  plot_pip("Dams per Triangle")
+```
+
+```{r message=FALSE, warning=FALSE}
+point_in_polygon3(sf_NID2019_U, sq_grid, "id") %>% 
+  plot_pip("Dams per Grid")
+```
+
+```{r message=FALSE, warning=FALSE}
+point_in_polygon3(sf_NID2019_U, hex_grid, "id") %>% 
+  plot_pip("Dams per Hexagon")
+```
+
+**Different tessellations result in different presentation of the density. The modifiable areal unit problem (MAUP) can essentially affect statistical results when point-based measures of spatial phenomena are aggregated into districts.For example, for the central American, in the original map, area with the lowest density of dams seems to be Texas. In the map with voronoi grids, area with the lowest density of dams seems to move to Oklahoma. In the map with triangle grids, area with the lowest density of dams seems to move to Nebraska.I would like to choose the hexagonal tessellation because it divides subjects into the smallest grid with equal areas, leading to less bias.**
+
+#Question 4
+
+**Dam purposes: Irrigation, Hydroelectric, Flood Control, Water Supply, and Fish and Wildlife**
+
+```{r message=FALSE, warning=FALSE}
+I_NID2019_U <- sf_NID2019_U %>% 
+  filter(grepl("I", sf_NID2019_U$PURPOSES) == TRUE)
+point_in_polygon3(I_NID2019_U, hex_grid, "id") %>% 
+  plot_pip("Dams Serving for Irrigation") +
+  gghighlight(n > (mean(n) + sd(n)))
+```
+
+```{r message=FALSE, warning=FALSE}
+H_NID2019_U <- sf_NID2019_U %>% 
+  filter(grepl("H", sf_NID2019_U$PURPOSES) == TRUE)
+point_in_polygon3(H_NID2019_U, hex_grid, "id") %>% 
+  plot_pip("Dams Serving for Hydroelectric") +
+  gghighlight(n > (mean(n) + sd(n)))
+```
+
+```{r message=FALSE, warning=FALSE}
+C_NID2019_U <- sf_NID2019_U %>% 
+  filter(grepl("C", sf_NID2019_U$PURPOSES) == TRUE)
+point_in_polygon3(C_NID2019_U, hex_grid, "id") %>% 
+  plot_pip("Dams Serving for Flood Control") +
+  gghighlight(n > (mean(n) + sd(n)))
+```
+
+```{r message=FALSE, warning=FALSE}
+S_NID2019_U <- sf_NID2019_U %>% 
+  filter(grepl("S", sf_NID2019_U$PURPOSES) == TRUE)
+point_in_polygon3(S_NID2019_U, hex_grid, "id") %>% 
+  plot_pip("Dams Serving for Water Supply") +
+  gghighlight(n > (mean(n) + sd(n)))
+```
+
+```{r message=FALSE, warning=FALSE}
+F_NID2019_U <- sf_NID2019_U %>% 
+  filter(grepl("F", sf_NID2019_U$PURPOSES) == TRUE)
+point_in_polygon3(F_NID2019_U, hex_grid, "id") %>% 
+  plot_pip("Dams Serving for Fish and Wildlife") +
+  gghighlight(n > (mean(n) + sd(n)))
+```
+* Dams serving for irrigation: Center in the northwest and southeast of the United States. The northwest part concentrated at the east of the Rockies lies on the leeward sides of the prevailing westerly winds. Moisture from the Pacific is almost impossible to come by, making it one of the driest parts of the United States, so dams for irrigation are concentrated in this area. The southeast part, near the Gulf Coast, suffers from seasonal drought due to the warm Gulf Stream, so dams used for irrigation are concentrated in this region. 
+* Dams serve for hydroelectric: Center in the western and northeastern coastal areas of the United States. These areas are close to the sea, which is good for generating electricity.
+* Dams serving for flood control: Center in the central United States. Located in the temperate monsoon climate where rainfall is high and where floods often occur.
+* Dams serving for water supply: Around large cities, where water demands are high.
+* Dams serving for fish and wildlife: Close to the inland National Wildlife Refuge where the demand of dams serving for fish and wildlife is high.
+
+#Extra Credit
+
+```{r message=FALSE, warning=FALSE}
+NID2019_U <- read_excel("~/github/geog-176A-labs/data/NID2019_U.xlsx")
+
+mississippi <- read_sf("~/github/geog-176A-labs/data/MajorRivers") %>% 
+  filter(SYSTEM == "Mississippi")
+```
+
+
+```{r message=FALSE, warning=FALSE}
+
+largest_storage = NID2019_U %>% 
+  filter(HAZARD == "H") %>% 
+  filter(!STATE %in% c("AK", "PR", "HI")) %>% 
+  filter(PURPOSES == "C") %>% 
+  group_by(STATE) %>% 
+  slice_max(NID_STORAGE, n=1)
+
+labels <- largest_storage %>% 
+  select(DAM_NAME, NID_STORAGE, PURPOSES, YEAR_COMPLETED)
+
+leaflet() %>% 
+  addProviderTiles(providers$CartoDB) %>% 
+  addCircleMarkers(data = largest_storage, 
+                   color = "red", 
+                   fillOpacity = 0.5, 
+                   stroke = FALSE, 
+                   popup = leafpop::popupTable(labels, feature.id = FALSE, row.numbers = FALSE), 
+                   radius = largest_storage$NID_STORAGE/1500000,
+  ) %>%
+  addPolylines(data = mississippi) 
+
+```
+
+
