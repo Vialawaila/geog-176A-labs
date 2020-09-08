@@ -160,7 +160,7 @@ covid %>%
   mutate(newCases = cases - lag(cases)) %>%
   mutate(roll7 = rollmean(newCases, 7, fill = NA, align = "right")) %>%
 ggplot(aes(x = date)) +
-  geom_col(aes(y = newCases), col = NA, fill = "#F5B8B5") +
+  geom_col(aes(y = newCases), fill = "#F5B8B5") +
   geom_line(aes(y = roll7), col = "darkred", size = 1) +
   labs(title = "New Cases: States",
        x = 'Date',
