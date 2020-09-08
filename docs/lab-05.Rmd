@@ -7,10 +7,6 @@ output:
     theme: journal
 ---
 
-#Yan Wang
-#09/07/2020
-#Lab 05
-
 ```{r message=FALSE, warning=FALSE}
 library(raster) # Raster Data handling
 library(tidyverse) # Data Manipulation
@@ -29,7 +25,7 @@ bb <- read_csv("~/github/geog-176A-labs/data/uscities.csv") %>%
   st_bbox() %>% 
   st_as_sfc() %>% 
   st_as_sf()
-mapview(bb)
+plot(bb)
 ```
 
 #Question 2
@@ -37,15 +33,6 @@ mapview(bb)
 ```{r message=FALSE, warning=FALSE}
 bbwgs = bb %>% st_transform(4326)
 bb = st_bbox(bbwgs)
-
-scenes = lsat_scenes()
-
-down = scenes %>%
-  filter(min_lat <= bbwgs$ymin, max_lat >= bbwgs$ymax,
-         min_lon <= bbwgs$xmin, max_lon >= bbwgs$xmax,
-         as.Date(acquisitionDate) == as.Date("2016-09-26"))
-
-write.csv(down, file = "data/palo-flood.csv", row.names = F)
 
 meta = read_csv("~/github/geog-176A-labs/data/palo-flood.csv")
 
@@ -168,37 +155,16 @@ plot(threshold, col = palette(256))
 ```{r message=FALSE, warning=FALSE}
 set.seed(09072020)
 values = getValues(r) %>%
-  dim()
+  na.omit(values)
+dim(r)
+threshold <- na.omit(threshold)
 ```
 There are 6 layers with 59996291 values in each layers.
 
 ```{r message=FALSE, warning=FALSE}
-values2 = na.omit(values)
-values3 = scale(values2)
-
-k12 = kmeans(values3, 12, iter.max = 100)
+k12 = kmeans(values, 12, iter.max = 100)
 kmeans_raster = threshold$ndvi
 values(kmeans_raster) = k12$cluster
-plot(kmeans_raster)
-
-k9 = kmeans(values3, 9, iter.max = 100)
-kmeans_raster = threshold$ndvi
-values(kmeans_raster) = k9$cluster
-plot(kmeans_raster)
-
-k6 = kmeans(values3, 6, iter.max = 100)
-kmeans_raster = threshold$ndvi
-values(kmeans_raster) = k6$cluster
-plot(kmeans_raster)
-
-k3 = kmeans(values3, 3, iter.max = 100)
-kmeans_raster = threshold$ndvi
-values(kmeans_raster) = k3$cluster
-plot(kmeans_raster)
-
-k7 = kmeans(values3, 7, iter.max = 100)
-kmeans_raster = threshold$ndvi
-values(kmeans_raster) = k7$cluster
 plot(kmeans_raster)
 
 kmeans_vals = getValues(kmeans_raster)
@@ -230,7 +196,7 @@ knitr::kable(areakable, caption = "Area of Flooded Cells (m^2)", col.names = c("
 
 # Extra Creedit
 
-```{r}
+```{r message=FALSE, warning=FALSE}
 point = st_point(c(-91.78948,42.06306)) %>% 
   st_sfc(crs = 4326) %>% 
   st_transform(crs(threshold)) %>%
@@ -238,5 +204,3 @@ point = st_point(c(-91.78948,42.06306)) %>%
 print("-91.78948,42.06306")
 raster::extract(threshold, point)
 ```
-
-
