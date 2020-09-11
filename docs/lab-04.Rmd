@@ -69,7 +69,7 @@ I remove 10375 points from the original object. This simplification will leads t
 ```{r message=FALSE, warning=FALSE}
 plot_tess = function(data, title){
   ggplot() + 
-    geom_sf(data = data, fill = "white", col = "green", size = .2) +   
+    geom_sf(data = data, fill = "white", col = "black", size = .2) +   
     theme_void() +
     labs(title = title, caption = paste("This tesselation has:", nrow(data), "tiles" )) +
     theme(plot.title = element_text(hjust = .5, color =  "green", face = "bold"))

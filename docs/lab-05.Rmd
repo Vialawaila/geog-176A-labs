@@ -146,7 +146,7 @@ swi3 = calc(swi, swi2)
 
 threshold = stack(ndvi3, ndwi3, mndwi3, wri3, swi3) %>% 
   setNames(c("NDVI", "NDWI", "MNDWI", "WRI", "SWI")) 
-palette = colorRampPalette(c("blue","white"))
+palette = colorRampPalette(c("white","blue"))
 plot(threshold, col = palette(256))
 
 ```
@@ -156,19 +156,18 @@ plot(threshold, col = palette(256))
 set.seed(09072020)
 values = getValues(r) %>%
   na.omit(values)
-dim(r)
-threshold <- na.omit(threshold)
+dim(values)
 ```
-There are 6 layers with 59996291 values in each layers.
+There are 117,640 rows, 6 columns.
 
 ```{r message=FALSE, warning=FALSE}
 k12 = kmeans(values, 12, iter.max = 100)
-kmeans_raster = threshold$ndvi
+kmeans_raster = r$Coastal.Aerosol
 values(kmeans_raster) = k12$cluster
 plot(kmeans_raster)
 
 kmeans_vals = getValues(kmeans_raster)
-binary_vals = getValues(flood_ndvi)
+binary_vals = getValues(ndvi3)
 table <- table(binary_vals,kmeans_vals)
 
 which.max(table)
@@ -178,7 +177,7 @@ f_kmeans = calc(kmeans_raster, t_kmeans)
 
 threshold = addLayer(threshold, f_kmeans) %>% 
   setNames(c("ndvi", "ndwi", "mndwi", "wri", "swi", "kmeans"))
-palette = colorRampPalette(c("blue","white"))
+palette = colorRampPalette(c("white","blue"))
 plot(threshold, col = palette(256))
 ```
 
