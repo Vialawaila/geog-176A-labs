@@ -1,0 +1,166 @@
+---
+title: "Geography 176A"
+author: "[Yan Wang](https://vialawaila.github.io)"
+subtitle: "Lab 06: Terrain Analysis"
+output:
+  html_document:
+    theme: journal
+---
+
+```{r message=FALSE, warning=FALSE}
+library(sf)        # vector manipulation
+library(raster)    # raster manipulation
+library(fasterize) # "faster" raster
+library(whitebox)  # terrain analysis
+
+# Data libraries
+library(osmdata)   # OSM API
+library(elevatr)   # Elevation  Web Tiles
+
+library(tidyverse)
+library(fasterize) 
+library(whitebox)  
+library(gifski)
+library(knitr)
+```
+
+```{r message=FALSE, warning=FALSE}
+basin = read_sf("https://labs.waterdata.usgs.gov/api/nldi/linked-data/nwissite/USGS-11119750/basin")
+
+elev = elevatr::get_elev_raster(basin, z = 13) %>% 
+  crop(basin) %>% 
+  mask(basin)
+elev = elev * 3.281
+writeRaster(elev, "../data/basin-elevation.tif", overwrite = TRUE)
+```
+
+```{r message=FALSE, warning=FALSE}
+elev = raster("../data/basin-elevation.tif")
+
+bb = st_bbox(basin) %>% 
+  st_as_sfc() %>% 
+  st_transform(4326)
+
+building <- opq(bb) %>% 
+  add_osm_feature(key = "building") %>%
+  osmdata_sf()
+
+building_points = building$osm_points %>% 
+  st_intersection(basin) %>% 
+  st_transform(crs(basin)) %>% 
+  st_centroid()
+
+building_poly = building$osm_polygons %>% 
+  st_intersection(basin) %>% 
+  st_transform(crs(basin))
+
+railway = opq(bb) %>% 
+  add_osm_feature(key = "railway", value = "station") %>% 
+  osmdata_sf()
+
+railway_points = railway$osm_points %>% 
+  st_intersection(basin) %>% 
+  st_transform(crs(basin))
+
+stream = opq(bb) %>% 
+  add_osm_feature(key = "waterway", value = "stream") %>% 
+  osmdata_sf()
+
+stream_lines = stream$osm_lines %>% 
+  st_intersection(basin) %>% 
+  st_transform(crs(basin))
+```
+```{r message=FALSE, warning=FALSE}
+wbt_hillshade("../data/basin-elevation.tif", '../data/basin-hillshade.tif')
+
+hillshade = raster("../data/basin-hillshade.tif")
+
+plot(hillshade, col = gray.colors(256, alpha = .5), box = FALSE, legend = FALSE, main = "Basin and Stream")
+plot(stream_lines, col = "blue", add = TRUE)
+plot(basin, add = TRUE)
+```
+
+```{r message=FALSE, warning=FALSE}
+stream_buffer = stream_lines %>% 
+  st_transform(5070) %>% 
+  st_buffer(10) %>% 
+  st_transform(4326)
+
+network_river = fasterize::fasterize(stream_buffer, elev)
+
+writeRaster(network_river, "../data/network-river.tif", overwrite = TRUE)
+wbt_breach_depressions("../data/basin-elevation.tif", "../data/breach-depressions.tif")
+wbt_elevation_above_stream("../data/breach-depressions.tif", "../data/network-river.tif", "../data/basin-hand.tif")
+```
+
+
+```{r message=FALSE, warning=FALSE}
+basin_river = raster("../data/network-river.tif")
+basin_hand = raster("../data/basin-hand.tif")
+
+basin_offset = basin_hand + 3.69
+basin_offset[basin_river == 1] = 0
+writeRaster(basin_offset, "../data/basin-offset.tif", overwrite = TRUE)
+```
+
+
+```{r message=FALSE, warning=FALSE}
+basin_offset = raster("../data/basin-offset.tif")
+basin_flood = basin_offset
+basin_offset[basin_offset > 10.02] = NA
+```
+
+
+```{r message=FALSE, warning=FALSE}
+plot(hillshade, col = gray.colors(256, alpha = .5), box = FALSE, main = 'Basin and Flood Stream', legend = FALSE)
+plot(basin_offset, col = rev(blues9), add = TRUE, legend = FALSE, box = FALSE)
+plot(basin, add = TRUE, box = FALSE)
+plot(railway_point, col = "green", add = TRUE, cex = 1, pch = 16)
+```
+
+The map looks accurate.
+
+```{r message=FALSE, warning=FALSE}
+building_points = ifelse(!is.na(raster::extract(basin_offset, building_point)), "red", "black")
+
+plot(hillshade, col = gray.colors(256, alpha = .5), main = paste("Number of Buildings Impacted", sum(building_points == "red"), "Buildings"), legend = FALSE, box =FALSE)
+plot(basin_offset, add = TRUE, col = rev(blues9), legend = FALSE, box = FALSE)
+plot(basin, add = TRUE)
+plot(railway_point, col = "green", cex = 1, pch = 16, add = TRUE, box = FALSE)
+plot(building_point, add = TRUE, col = building_points, cex = .08, pch = 16)
+```
+
+#Extra Credit
+```{r eval = FALSE, message=FALSE, warning=FALSE}
+sb = AOI::aoi_get("Santa Barbara")
+
+basin_hillshade = raster("../data/basin-hillshade.tif") %>%
+  crop(sb)
+basin_offset2 = basin_flood %>% 
+  crop(sb)
+building_gif = st_intersection(basin, building_points)
+
+gifski::save_gif({
+  for(i in 0:20) {
+    basin_sb = basin_offset2
+    basin_sb[basin_sb > i] = NA
+    building_gif$flooded = ifelse(!is.na(extract(basin_sb, building_gif)), 1, 0)
+
+    plot(basin_sb, add = T, col = rev(blues9), legend = FALSE, box = FALSE)
+    plot(basin_flood, col = rev(blues9), box = FALSE,  add = TRUE, legend = FALSE)
+    plot(basin_hillshade, col = gray.colors(256, alpha = .5), main = paste(sum(building_gif$flooded == 1), "Impacted Buildings,", i, "Foot Stage"), legend = FALSE, box =FALSE, axes = F)
+    plot(basin, box = FALSE, add = TRUE)
+    plot(building_point, add = TRUE, col = building_points, cex = .08, pch = 16)
+    plot(railway_point, col = "green", box = FALSE, add = TRUE, cex = 1, pch = 16)
+
+  }
+}, gif_file = "data/mission-creek-fim.gif",
+   width = 600, height = 600, 
+   delay = .7, loop = TRUE)
+```
+
+![](../data/mission-creek-fim.gif)
+
+At 0 stage, are we capturing impacted buildings because the buffer of river system is 10 meters. Buildings are considered as being inundate
+
+

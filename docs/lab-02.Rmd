@@ -1,7 +1,7 @@
 ---
 title: "Geography 176A"
 author: "[Yan Wang](https://vialawaila.github.io/)"
-subtitle: 'Lab 03: COVID-19 Pandemic'
+subtitle: 'Lab 02: COVID-19 Pandemic'
 output:
   html_document:
     theme: journal
